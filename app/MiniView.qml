@@ -106,7 +106,7 @@ Item {
 
         MockCover {
             anchors.fill: parent
-            radius: Theme.radius
+            radius: 0
             seed: Theme.seedFor(root.item)
             showGlyph: false
             visible: coverImage.status !== Image.Ready
@@ -285,7 +285,7 @@ Item {
             bottom: parent.bottom
         }
         height: 92
-        radius: Theme.radius
+        radius: 0
         opacity: root.controlsVisible ? 1 : 0
         visible: opacity > 0
         enabled: root.controlsVisible

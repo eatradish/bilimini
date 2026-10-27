@@ -680,7 +680,7 @@ Window {
             Rectangle {
                 anchors.fill: frame
                 anchors.margins: -(index + 1)
-                radius: Theme.radius + index + 1
+                radius: win.mode === "mini" ? 0 : Theme.radius + index + 1
                 color: "transparent"
                 border.width: 1
                 border.color: Qt.rgba(0, 0, 0, 0.13 - index * 0.024)
@@ -691,7 +691,7 @@ Window {
             id: frame
             anchors.fill: parent
             anchors.margins: win.pad
-            radius: win.pad > 0 ? Theme.radius : 0
+            radius: win.mode === "mini" ? 0 : (win.pad > 0 ? Theme.radius : 0)
             color: Theme.bg
             clip: true
 
