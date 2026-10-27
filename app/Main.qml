@@ -35,6 +35,9 @@ Window {
     property var currentUser: null
     property var userVideos: []
     property bool userLoading: false
+    property bool userLoadingMore: false
+    property bool userEnd: false
+    property int userPage: 1
     property string userError: ""
     property var comments: []
     property int commentCount: 0
@@ -224,14 +227,52 @@ Window {
         currentUser = user;
         userVideos = [];
         userLoading = true;
+        userLoadingMore = false;
+        userEnd = false;
+        userPage = 1;
         userError = "";
         view = "user";
         Api.request("/user/" + user.mid + "/videos?page=1", function (data) {
             win.userLoading = false;
             win.userVideos = data.items || [];
             win.userError = data.error || "";
+            win.userEnd = win.userVideos.length === 0
+                          || (data.count && win.userVideos.length >= data.count);
         }, function (error) {
             win.userLoading = false;
+            win.userError = error;
+        });
+    }
+
+    function loadMoreUserVideos() {
+        if (!currentUser || userLoading || userLoadingMore || userEnd)
+            return;
+        const next = userPage + 1;
+        userLoadingMore = true;
+        Api.request("/user/" + currentUser.mid + "/videos?page=" + next, function (data) {
+            if (data.error) {
+                win.userLoadingMore = false;
+                win.userError = data.error;
+                return;
+            }
+            const items = data.items || [];
+            const known = ({});
+            for (let i = 0; i < win.userVideos.length; ++i)
+                known[win.userVideos[i].bvid] = true;
+            const merged = win.userVideos.slice();
+            for (let i = 0; i < items.length; ++i) {
+                if (!known[items[i].bvid]) {
+                    known[items[i].bvid] = true;
+                    merged.push(items[i]);
+                }
+            }
+            win.userVideos = merged;
+            win.userPage = next;
+            if (items.length === 0 || (data.count && merged.length >= data.count))
+                win.userEnd = true;
+            win.userLoadingMore = false;
+        }, function (error) {
+            win.userLoadingMore = false;
             win.userError = error;
         });
     }

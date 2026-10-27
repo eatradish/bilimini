@@ -7,6 +7,26 @@ Item {
 
     property var host: null
     readonly property var user: host ? host.currentUser : null
+    property var items: []
+    property int oldCount: 0
+
+    function sync() {
+        const oldY = list.contentY;
+        const oldFirst = items.length ? items[0].bvid : "";
+        oldCount = items.length;
+        items = root.host ? root.host.userVideos : [];
+        const appended = items.length > 0 && oldFirst !== "" && items[0].bvid === oldFirst
+                         && items.length > oldCount;
+        if (appended)
+            list.contentY = oldY;
+    }
+
+    Connections {
+        target: root.host
+        function onUserVideosChanged() { root.sync() }
+    }
+
+    Component.onCompleted: sync()
 
     Item {
         id: header
@@ -131,15 +151,47 @@ Item {
         }
         clip: true
         spacing: 4
-        model: root.host ? root.host.userVideos : []
+        model: root.items
         boundsBehavior: Flickable.StopAtBounds
 
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
+        onContentYChanged: {
+            if (root.host && contentY + height >= contentHeight - 200)
+                root.host.loadMoreUserVideos();
+        }
+        onAtYEndChanged: if (atYEnd && root.host) root.host.loadMoreUserVideos()
+
+        footer: Item {
+            width: list.width
+            height: 44
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 6
+                visible: root.host && (root.host.userLoadingMore || root.host.userEnd)
+
+                Spinner {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 14
+                    height: 14
+                    visible: root.host && root.host.userLoadingMore
+                    color: Theme.textMuted
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.host && root.host.userEnd ? "没有更多了" : "加载中…"
+                    color: Theme.textMuted
+                    font.pixelSize: 11
+                }
+            }
+        }
+
         delegate: VideoRow {
             width: ListView.view.width
             item: modelData
-            onClicked: root.host.playItem(modelData, root.host.userVideos, index)
+            onClicked: root.host.playItem(modelData, root.items, index)
         }
     }
 
