@@ -103,8 +103,29 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let target = args
         .next()
-        .expect("usage: bilimini-gpui <video-url-or-path> [audio-url]");
-    let audio = args.next();
+        .expect("usage: bilimini-gpui <bvid | video-url-or-path> [audio-url]");
+    let mut audio = args.next();
+
+    // A bare BV id is resolved through the data layer: cid + DASH urls.
+    let target = if target.starts_with("BV") && audio.is_none() {
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let play = runtime
+            .block_on(async {
+                let bili = bilimini_bili::Bili::new()?;
+                bili.play(&target, 0, 80).await
+            })
+            .expect("resolve bvid");
+        eprintln!(
+            "[app] {} cid={} qn={} {}x{:?}",
+            play.bvid, play.cid, play.quality, play.width.unwrap_or(0), play.height
+        );
+        if !play.audio_url.is_empty() {
+            audio = Some(play.audio_url);
+        }
+        play.video_url
+    } else {
+        target
+    };
 
     Application::new().run(move |cx: &mut App| {
         let options = WindowOptions {

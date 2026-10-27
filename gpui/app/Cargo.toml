@@ -6,4 +6,6 @@ edition = "2021"
 [dependencies]
 gpui = "0.2"
 image = { version = "0.25", default-features = false }
+bilimini-bili = { path = "../bili" }
 bilimini-media = { path = "../media" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

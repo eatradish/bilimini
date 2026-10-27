@@ -1,5 +1,5 @@
 [workspace]
-members = ["app", "media"]
+members = ["app", "bili", "media"]
 resolver = "2"
 
 [profile.dev]

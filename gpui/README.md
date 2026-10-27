@@ -29,11 +29,16 @@ Notes:
 ```bash
 cargo build
 ./target/debug/bilimini-gpui /path/to/video.mp4            # local file
+./target/debug/bilimini-gpui BV1jhhR6bELW                  # resolve + play a bvid
 ./target/debug/bilimini-gpui "<video-url>" "<audio-url>"   # bilibili DASH pair
 ```
 
 Bilibili DASH audio is a separate URL; it is added with `audio-add ... select`
 once the video reports `FILE_LOADED`. Both requests carry Referer/User-Agent.
+
+Passing a `BV...` id uses the in-process `bilimini-bili` data layer (bpi-rs) to
+resolve the cid and fetch a qn=80 DASH pair; cookies from
+`~/.local/share/bili-mini/auth.json` are used when present.
 
 System deps beyond the usual Qt/Rust toolchain: EGL (`libegl`) and a working
 OpenGL/EGL driver (Mesa). No GStreamer needed.
