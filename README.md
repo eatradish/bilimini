@@ -4,13 +4,6 @@
 
 ![小窗](docs/screenshots/mini.png)
 
-## 怎么用
-
-1. 启动是推荐列表，点视频后收成右下角小窗播放（置顶）
-2. 小窗：点画面暂停，双击展开；拖标题条移动，四角缩放
-3. 展开页：看简介、评论和相关推荐；`返回` 回列表，`小窗` 收回右下角
-4. 控制条播放时自动隐藏，鼠标移入出现；托盘或 `Meta+Shift+B` 显示/隐藏
-
 | 展开播放页 | 推荐列表 | 搜索 UP 主 | 评论 |
 | --- | --- | --- | --- |
 | ![player](docs/screenshots/player.png) | ![browse](docs/screenshots/browse.png) | ![search](docs/screenshots/search-user.png) | ![comments](docs/screenshots/comments.png) |
