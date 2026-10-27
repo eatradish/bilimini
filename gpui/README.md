@@ -10,8 +10,9 @@ clicking the mini window opens the expanded player; `小窗` goes back.
 - feed cards with real covers (fetched + decoded in the background), title,
   up/views; header with tabs and login pill (visual only for now)
 - click a row → resolve cid + qn=80 DASH urls → play → swap to the mini window
-- mini window (380×214) at the bottom-right of the primary display, with a
-  title bar + 展开 hint; click it to open the expanded player
+- mini window (380×214) at the bottom-right of the primary display with an
+  overlay control bar (play/pause, title, position, mute, 展开, close) and a
+  progress line; click the video to pause, double-click to expand
 - expanded player: video, title, up/views, `返回` to the feed, `小窗` back to mini
 - frames are shared by both windows through one `RenderImage`
 

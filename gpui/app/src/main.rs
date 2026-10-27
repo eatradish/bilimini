@@ -10,8 +10,9 @@
 use bilimini_bili::{Bili, PlayInfo, VideoItem};
 use bilimini_media::{PlaybackState, Player};
 use gpui::{
-    div, img, point, prelude::*, px, rgb, size, App, Application, ClickEvent, Context, FontWeight,
-    ObjectFit, Render, RenderImage, TitlebarOptions, Window, WindowBounds, WindowOptions,
+    div, img, point, prelude::*, px, rgb, size, App, Application, ClickEvent, Context, FocusHandle,
+    FontWeight, KeyDownEvent, ObjectFit, Render, RenderImage, TitlebarOptions, Window,
+    WindowBounds, WindowDecorations, WindowOptions,
 };
 use image::{Frame, ImageBuffer, Rgba};
 use std::collections::HashMap;
@@ -235,31 +236,92 @@ impl AppState {
 struct RootView {
     state: gpui::Entity<AppState>,
     role: Role,
+    focus: FocusHandle,
+    focused: bool,
 }
 
 impl RootView {
     fn new(state: gpui::Entity<AppState>, role: Role, cx: &mut Context<Self>) -> Self {
         cx.observe(&state, |_, _, cx| cx.notify()).detach();
-        Self { state, role }
+        Self {
+            state,
+            role,
+            focus: cx.focus_handle(),
+            focused: false,
+        }
     }
 }
 
 impl Render for RootView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.focused {
+            window.focus(&self.focus);
+            self.focused = true;
+        }
+
         let state = self.state.read(cx);
         let content = match (self.role, state.view) {
             (Role::Mini, _) => mini_view(&state, self.state.clone()),
             (Role::Expanded, View::Player) => {
-                let width = f32::from(_window.bounds().size.width);
+                let width = f32::from(window.bounds().size.width);
                 player_view(&state, self.state.clone(), width)
             }
             (Role::Expanded, View::Browse) => browse_view(&state, self.state.clone()),
         };
 
+        let key_entity = self.state.clone();
+        let role = self.role;
         div()
             .size_full()
             .bg(rgb(BG))
             .text_color(rgb(TEXT))
+            .track_focus(&self.focus)
+            .on_key_down(move |event: &KeyDownEvent, window, cx| {
+                match event.keystroke.key.as_str() {
+                    "space" => {
+                        key_entity.update(cx, |state, cx| {
+                            if let Some(player) = &state.player {
+                                player.set_paused(!state.playback.paused);
+                            }
+                            cx.notify();
+                        });
+                    }
+                    "left" | "right" => {
+                        let delta = if event.keystroke.key == "left" { -5.0 } else { 5.0 };
+                        key_entity.update(cx, |state, cx| {
+                            if let Some(player) = &state.player {
+                                let target = (state.playback.position + delta).max(0.0);
+                                player.seek(target);
+                            }
+                            cx.notify();
+                        });
+                    }
+                    "m" => {
+                        key_entity.update(cx, |state, cx| {
+                            state.muted = !state.muted;
+                            let volume = if state.muted { 0.0 } else { 1.0 };
+                            if let Some(player) = &state.player {
+                                player.set_volume(volume);
+                            }
+                            cx.notify();
+                        });
+                    }
+                    "escape" => {
+                        if role == Role::Mini {
+                            open_window(cx, key_entity.clone(), Role::Expanded);
+                            window.remove_window();
+                        } else {
+                            key_entity.update(cx, |state, cx| {
+                                if state.view == View::Player {
+                                    state.view = View::Browse;
+                                }
+                                cx.notify();
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            })
             .child(content)
     }
 }
@@ -314,7 +376,8 @@ fn browse_view(state: &AppState, entity: gpui::Entity<AppState>) -> gpui::AnyEle
                 state.refresh();
                 cx.notify();
             });
-        }));
+        }))
+        .child(action("✕", move |_, cx| cx.quit()));
 
     let tabs = div()
         .flex()
@@ -567,43 +630,114 @@ fn mini_view(state: &AppState, entity: gpui::Entity<AppState>) -> gpui::AnyEleme
         .map(|video| video.title.clone())
         .unwrap_or_default();
 
+    let paused = state.playback.paused;
+    let label = if paused { "播放" } else { "暂停" };
+    let position = fmt_time(state.playback.position);
+    let ratio = if state.playback.duration > 0.0 {
+        (state.playback.position / state.playback.duration).clamp(0.0, 1.0) as f32
+    } else {
+        0.0
+    };
+    let muted = state.muted;
+
+    let video_toggle_entity = entity.clone();
+    let toggle_entity = entity.clone();
+    let expand_entity = entity.clone();
+    let mute_entity = entity.clone();
+    let video_entity = entity.clone();
+
     div()
         .id("mini")
         .flex()
         .flex_col()
         .size_full()
         .bg(rgb(0x000000))
-        .cursor_pointer()
-        .child(video_area(state, true))
+        .child(
+            div()
+                .id("mini-video")
+                .cursor_pointer()
+                .child(video_area(state, true))
+                .on_click(move |event, window, cx| {
+                    if event.click_count() >= 2 {
+                        open_window(cx, video_entity.clone(), Role::Expanded);
+                        window.remove_window();
+                    } else {
+                        video_toggle_entity.update(cx, |state, cx| {
+                            if let Some(player) = &state.player {
+                                player.set_paused(!state.playback.paused);
+                            }
+                            cx.notify();
+                        });
+                    }
+                }),
+        )
         .child(
             div()
                 .w_full()
-                .h(px(26.0))
-                .px_2()
-                .bg(rgb(CARD))
+                .bg(rgb(0x0b0b0d))
                 .flex()
-                .items_center()
-                .gap_2()
+                .flex_col()
                 .child(
                     div()
-                        .flex_1()
-                        .text_xs()
-                        .text_color(rgb(TEXT))
-                        .truncate()
-                        .child(title),
+                        .h(px(2.0))
+                        .w_full()
+                        .bg(rgb(BORDER))
+                        .child(div().h(px(2.0)).w(px(364.0 * ratio)).bg(rgb(ACCENT))),
                 )
                 .child(
                     div()
-                        .text_xs()
-                        .text_color(rgb(ACCENT))
-                        .child("展开"),
+                        .h(px(24.0))
+                        .px_2()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(mini_action(label, move |_, cx| {
+                            toggle_entity.update(cx, |state, cx| {
+                                if let Some(player) = &state.player {
+                                    player.set_paused(!state.playback.paused);
+                                }
+                                cx.notify();
+                            });
+                        }))
+                        .child(
+                            div()
+                                .flex_1()
+                                .text_xs()
+                                .text_color(rgb(TEXT))
+                                .truncate()
+                                .child(title),
+                        )
+                        .child(div().text_xs().text_color(rgb(MUTED)).child(position))
+                        .child(mini_action(if muted { "静音" } else { "有声" }, move |_, cx| {
+                            mute_entity.update(cx, |state, cx| {
+                                state.muted = !state.muted;
+                                let volume = if state.muted { 0.0 } else { 1.0 };
+                                if let Some(player) = &state.player {
+                                    player.set_volume(volume);
+                                }
+                                cx.notify();
+                            });
+                        }))
+                        .child(mini_action("展开", move |window, cx| {
+                            open_window(cx, expand_entity.clone(), Role::Expanded);
+                            window.remove_window();
+                        }))
+                        .child(mini_action("✕", move |_, cx| cx.quit())),
                 ),
         )
-        .on_click(move |_, window, cx| {
-            open_window(cx, entity.clone(), Role::Expanded);
-            window.remove_window();
-        })
         .into_any_element()
+}
+
+fn mini_action(
+    label: &'static str,
+    handler: impl Fn(&mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    div()
+        .id(label)
+        .cursor_pointer()
+        .px_1()
+        .child(div().text_xs().text_color(rgb(ACCENT)).child(label))
+        .on_click(move |_, window, cx| handler(window, cx))
 }
 
 fn control_bar(
@@ -818,6 +952,8 @@ fn open_window(app: &mut App, state: gpui::Entity<AppState>, role: Role) {
             title: Some(title.into()),
             ..Default::default()
         }),
+        window_decorations: Some(WindowDecorations::Client),
+        is_resizable: role == Role::Expanded,
         ..Default::default()
     };
 
