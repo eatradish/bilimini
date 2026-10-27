@@ -1,7 +1,7 @@
 #include <clocale>
 
 #include <QCommandLineParser>
-#include <QGuiApplication>
+#include <QApplication>
 #include <QIcon>
 #include <QImage>
 #include <QLinearGradient>
@@ -18,6 +18,7 @@
 
 #include "appcore.h"
 #include "mpvitem.h"
+#include "traycontroller.h"
 
 namespace {
 
@@ -71,7 +72,7 @@ int main(int argc, char *argv[])
     if (qEnvironmentVariableIsEmpty("QSG_RENDER_LOOP"))
         qputenv("QSG_RENDER_LOOP", "basic");
 
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
     // libmpv parses numbers with the C locale; Qt switches LC_NUMERIC to the
     // system locale, which makes mpv_create() fail.
     setlocale(LC_NUMERIC, "C");
@@ -185,6 +186,10 @@ int main(int argc, char *argv[])
     auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
     if (!window)
         return 1;
+
+    // The tray + global shortcut keep the app alive while the window is hidden.
+    if (!screenshot)
+        new TrayController(window, &core, &app);
 
     if (parser.isSet(optSize)) {
         const QStringList parts = parser.value(optSize).split(QLatin1Char('x'));

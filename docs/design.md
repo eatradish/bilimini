@@ -146,6 +146,12 @@ QML 在 `PlayerView` 里用 `CommentRow` 渲染，「查看更多」用游标拉
 QML `DanmakuLayer` 用 64 个 Text 池，由播放时钟驱动，按 `(position - startTime) * speed`
 算 x，9 条泳道按 `lanesFree` 选空闲道；弹幕开关在迷你栏。
 
+**托盘与全局快捷键**：`QSystemTrayIcon` 属于 QtWidgets，所以主程序从 `QGuiApplication` 换成了
+`QApplication`（Qt Quick 不受影响）。左键 `Trigger` 切换窗口显隐，右键菜单里「显示/隐藏窗口」
+的文字随 `visibleChanged` 更新；全局快捷键用 KF6 的 `KGlobalAccel` 注册一个 QAction
+（默认 `Meta+Shift+B`），可在系统设置 → 快捷键里改。窗口隐藏只是 `hide()`，事件循环和
+mpv 播放继续；`--screenshot` 模式不创建托盘。
+
 **切页与返回**：`setTab()` 会把 `view` 切到 `browse`，但没有入口回播放页。现在当
 `currentItem != null && view === "browse"` 时，tabs 下面会出现一条「▶ 标题 … 返回播放」的
 悬浮条，点击把 `view` 切回 `player`；播放不中断（`MpvItem` 在 `view != player` 时只是隐藏）。
