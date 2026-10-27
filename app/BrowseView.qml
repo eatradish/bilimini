@@ -111,6 +111,43 @@ Item {
 
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
+        // Infinite scroll on the recommendation tab.
+        onContentYChanged: {
+            if (root.host && root.host.tab === "recommend"
+                    && contentY + height >= contentHeight - 240)
+                root.host.loadMoreFeed();
+        }
+        onAtYEndChanged: {
+            if (atYEnd && root.host && root.host.tab === "recommend")
+                root.host.loadMoreFeed();
+        }
+
+        footer: Item {
+            width: list.width
+            height: root.host && root.host.tab === "recommend" ? 44 : 0
+
+            Row {
+                anchors.centerIn: parent
+                spacing: 6
+                visible: root.host && (root.host.feedLoadingMore || root.host.feedEnd)
+
+                Spinner {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 14
+                    height: 14
+                    visible: root.host && root.host.feedLoadingMore
+                    color: Theme.textMuted
+                }
+
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.host && root.host.feedEnd ? "没有更多了" : "加载中…"
+                    color: Theme.textMuted
+                    font.pixelSize: 11
+                }
+            }
+        }
+
         delegate: Item {
             width: ListView.view.width
             height: root.isUser ? userRow.height : videoRow.height

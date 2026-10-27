@@ -3,25 +3,23 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
+use bpi_rs::BpiClient;
 use bpi_rs::ids::{Bvid, Cid, Mid};
 use bpi_rs::search::{SearchBiliUserParams, SearchVideoParams};
 use bpi_rs::user::UserUploadedVideosParams;
-use bpi_rs::video::{
-    VideoHomepageRecommendationsParams, VideoPlayUrlParams, VideoViewParams,
-};
-use bpi_rs::BpiClient;
+use bpi_rs::video::{VideoHomepageRecommendationsParams, VideoPlayUrlParams, VideoViewParams};
 use cookie_scoop::{
-    get_cookies, to_cookie_header, BrowserName, CookieHeaderOptions, GetCookiesOptions,
+    BrowserName, CookieHeaderOptions, GetCookiesOptions, get_cookies, to_cookie_header,
 };
 use flate2::read::DeflateDecoder;
 use md5::{Digest, Md5};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const REFERER: &str = "https://www.bilibili.com/";
 const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
@@ -87,11 +85,16 @@ impl Bili {
             .clone()
     }
 
-    pub async fn feed(&self) -> Result<Vec<Value>> {
+    pub async fn feed(&self, fresh_idx: u32) -> Result<Vec<Value>> {
+        // `fresh_idx` is the refresh counter the web UI increments on every
+        // scroll; each value returns a new batch of recommendations.
+        let params = VideoHomepageRecommendationsParams::new()
+            .fresh_idx(fresh_idx.max(1))
+            .map_err(anyhow::Error::msg)?;
         let data = self
             .client()
             .video()
-            .homepage_recommendations(VideoHomepageRecommendationsParams::new())
+            .homepage_recommendations(params)
             .await
             .map_err(anyhow::Error::msg)
             .context("fetch homepage recommendations")?;
@@ -266,13 +269,13 @@ impl Bili {
         let mut items: Vec<Value> = Vec::new();
         let mut seen: HashSet<i64> = HashSet::new();
 
-        if offset.is_empty() {
-            if let Some(top) = data["top_replies"].as_array() {
-                for comment in top {
-                    let value = comment_to_json(comment);
-                    if seen.insert(value["rpid"].as_i64().unwrap_or(0)) {
-                        items.push(value);
-                    }
+        if offset.is_empty()
+            && let Some(top) = data["top_replies"].as_array()
+        {
+            for comment in top {
+                let value = comment_to_json(comment);
+                if seen.insert(value["rpid"].as_i64().unwrap_or(0)) {
+                    items.push(value);
                 }
             }
         }
@@ -424,7 +427,10 @@ impl Bili {
         }
 
         let header = to_cookie_header(&result.cookies, &CookieHeaderOptions::default());
-        if !header.split(';').any(|part| part.trim().starts_with("SESSDATA=")) {
+        if !header
+            .split(';')
+            .any(|part| part.trim().starts_with("SESSDATA="))
+        {
             bail!("浏览器里的 B 站会话缺少 SESSDATA，可能没有登录过");
         }
 
@@ -526,7 +532,7 @@ fn auth_path() -> PathBuf {
     base.join("bili-mini").join("auth.json")
 }
 
-fn load_cookie(path: &PathBuf) -> Option<String> {
+fn load_cookie(path: &Path) -> Option<String> {
     let text = std::fs::read_to_string(path).ok()?;
     let value: Value = serde_json::from_str(&text).ok()?;
     value["cookie"]
@@ -535,7 +541,7 @@ fn load_cookie(path: &PathBuf) -> Option<String> {
         .map(|cookie| cookie.to_string())
 }
 
-fn save_cookie(path: &PathBuf, cookie: &str) -> Result<()> {
+fn save_cookie(path: &Path, cookie: &str) -> Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).with_context(|| format!("create {}", dir.display()))?;
     }
@@ -561,11 +567,10 @@ fn codec_rank(codecs: &str) -> u8 {
     }
 }
 
-
 const MIXIN_TABLE: [usize; 64] = [
-    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19,
-    29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
-    22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29,
+    28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25,
+    54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
 ];
 
 fn wbi_file_key(url: &str) -> String {
@@ -625,7 +630,13 @@ fn wbi_signed_query(params: &BTreeMap<&str, String>, mixin: &str) -> String {
 
     let query = pairs
         .iter()
-        .map(|(key, value)| format!("{}={}", encode_uri_component(key), encode_uri_component(value)))
+        .map(|(key, value)| {
+            format!(
+                "{}={}",
+                encode_uri_component(key),
+                encode_uri_component(value)
+            )
+        })
         .collect::<Vec<_>>()
         .join("&");
 

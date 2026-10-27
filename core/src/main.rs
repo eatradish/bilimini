@@ -11,14 +11,14 @@ use std::io::Write;
 use std::sync::Arc;
 
 use axum::{
+    Json, Router,
     extract::{Path, Query, Request, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use bili::Bili;
 
@@ -39,8 +39,13 @@ async fn main() {
         } else {
             format!("{no_proxy},bilibili.com,hdslb.com,127.0.0.1,localhost")
         };
-        std::env::set_var("NO_PROXY", value);
-        std::env::set_var("no_proxy", std::env::var("NO_PROXY").unwrap_or_default());
+        // SAFETY: nothing else runs concurrently at this point (single-threaded,
+        // before the Tokio runtime spawns any worker threads), so mutating the
+        // process environment cannot race with another thread reading it.
+        unsafe {
+            std::env::set_var("NO_PROXY", value);
+            std::env::set_var("no_proxy", std::env::var("NO_PROXY").unwrap_or_default());
+        }
     }
 
     let token = random_token();
@@ -60,10 +65,7 @@ async fn main() {
         .route("/user/{mid}/videos", get(user_videos))
         .route("/auth/status", get(auth_status))
         .route("/auth/import", post(auth_import))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            require_token,
-        ))
+        .layer(middleware::from_fn_with_state(state.clone(), require_token))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
@@ -112,9 +114,19 @@ async fn health() -> Json<Value> {
     }))
 }
 
-async fn feed(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
-    match state.bili.feed().await {
-        Ok(items) => (StatusCode::OK, Json(json!({ "items": items, "error": null }))),
+async fn feed(
+    State(state): State<AppState>,
+    Query(params): Query<HashMap<String, String>>,
+) -> (StatusCode, Json<Value>) {
+    let fresh_idx = params
+        .get("fresh_idx")
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(1);
+    match state.bili.feed(fresh_idx).await {
+        Ok(items) => (
+            StatusCode::OK,
+            Json(json!({ "items": items, "error": null })),
+        ),
         Err(err) => {
             eprintln!("bili-core: feed failed: {err:#}");
             (
@@ -144,7 +156,10 @@ async fn search(
         .unwrap_or("video");
 
     match state.bili.search(&keyword, kind).await {
-        Ok(items) => (StatusCode::OK, Json(json!({ "items": items, "error": null }))),
+        Ok(items) => (
+            StatusCode::OK,
+            Json(json!({ "items": items, "error": null })),
+        ),
         Err(err) => {
             eprintln!("bili-core: search failed: {err:#}");
             (
@@ -155,9 +170,15 @@ async fn search(
     }
 }
 
-async fn video(State(state): State<AppState>, Path(bvid): Path<String>) -> (StatusCode, Json<Value>) {
+async fn video(
+    State(state): State<AppState>,
+    Path(bvid): Path<String>,
+) -> (StatusCode, Json<Value>) {
     match state.bili.view(&bvid).await {
-        Ok(data) => (StatusCode::OK, Json(json!({ "video": data, "error": null }))),
+        Ok(data) => (
+            StatusCode::OK,
+            Json(json!({ "video": data, "error": null })),
+        ),
         Err(err) => {
             eprintln!("bili-core: view failed: {err:#}");
             (
@@ -167,7 +188,6 @@ async fn video(State(state): State<AppState>, Path(bvid): Path<String>) -> (Stat
         }
     }
 }
-
 
 async fn auth_status(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
     match state.bili.auth_status().await {
@@ -218,10 +238,7 @@ async fn play(
     }
 }
 
-async fn danmaku(
-    State(state): State<AppState>,
-    Path(cid): Path<u64>,
-) -> (StatusCode, Json<Value>) {
+async fn danmaku(State(state): State<AppState>, Path(cid): Path<u64>) -> (StatusCode, Json<Value>) {
     match state.bili.danmaku(cid).await {
         Ok(items) => (StatusCode::OK, Json(json!({ "items": items }))),
         Err(err) => {

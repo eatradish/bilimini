@@ -71,6 +71,9 @@ Window {
     // Data from bili-core.
     property var feedItems: []
     property bool feedLoading: false
+    property bool feedLoadingMore: false
+    property bool feedEnd: false
+    property int feedFreshIdx: 1
     property string feedError: ""
     property var searchResults: []
     property string searchType: "video"
@@ -451,11 +454,15 @@ Window {
         if (AppCore.coreState !== "ready" || feedLoading)
             return;
         feedLoading = true;
+        feedLoadingMore = false;
+        feedEnd = false;
+        feedFreshIdx = 1;
         feedError = "";
-        Api.request("/feed", function (data) {
+        Api.request("/feed?fresh_idx=1", function (data) {
             win.feedLoading = false;
             win.feedError = data.error || "";
             win.feedItems = data.items || [];
+            win.feedEnd = win.feedItems.length === 0;
             if (AppCore.initialSearch !== "") {
                 win.searchType = AppCore.initialSearchType !== "" ? AppCore.initialSearchType : "video";
                 win.tab = "search";
@@ -479,6 +486,43 @@ Window {
             }
         }, function (error) {
             win.feedLoading = false;
+            win.feedError = error;
+        });
+    }
+
+    // Infinite scroll: ask bili-core for the next fresh_idx batch and append
+    // the unseen videos. The web UI does the same with its refresh counter.
+    function loadMoreFeed() {
+        if (AppCore.coreState !== "ready" || feedLoading || feedLoadingMore || feedEnd)
+            return;
+        if (tab !== "recommend")
+            return;
+        const next = feedFreshIdx + 1;
+        feedLoadingMore = true;
+        Api.request("/feed?fresh_idx=" + next, function (data) {
+            if (data.error) {
+                win.feedLoadingMore = false;
+                win.feedError = data.error;
+                return;
+            }
+            const items = data.items || [];
+            const known = ({});
+            for (let i = 0; i < win.feedItems.length; ++i)
+                known[win.feedItems[i].bvid] = true;
+            const merged = win.feedItems.slice();
+            for (let i = 0; i < items.length; ++i) {
+                if (!known[items[i].bvid]) {
+                    known[items[i].bvid] = true;
+                    merged.push(items[i]);
+                }
+            }
+            win.feedItems = merged;
+            win.feedFreshIdx = next;
+            if (items.length === 0)
+                win.feedEnd = true;
+            win.feedLoadingMore = false;
+        }, function (error) {
+            win.feedLoadingMore = false;
             win.feedError = error;
         });
     }
