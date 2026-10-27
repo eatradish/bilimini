@@ -69,11 +69,14 @@ void TrayController::setupTray()
         return;
 
     m_tray = new QSystemTrayIcon(buildTrayIcon(), this);
-    m_tray->setToolTip(QStringLiteral("bilimini"));
+    m_tray->setToolTip(tr("bilimini · Meta+Shift+B 显示/隐藏"));
 
     m_menu = new QMenu();
     m_toggleAction = m_menu->addAction(QString());
     connect(m_toggleAction, &QAction::triggered, this, &TrayController::toggle);
+    m_menu->addSeparator();
+    auto *shortcutHint = m_menu->addAction(tr("快捷键：Meta+Shift+B"));
+    shortcutHint->setEnabled(false);
     m_menu->addSeparator();
     m_quitAction = m_menu->addAction(tr("退出"));
     connect(m_quitAction, &QAction::triggered, qApp, &QCoreApplication::quit);
