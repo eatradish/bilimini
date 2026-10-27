@@ -8,9 +8,9 @@
 //! into `RenderImage`s in the background.
 
 use bilimini_bili::{Bili, PlayInfo, VideoItem};
-use bilimini_media::Player;
+use bilimini_media::{PlaybackState, Player};
 use gpui::{
-    div, img, point, prelude::*, px, rgb, size, App, Application, Context, FontWeight,
+    div, img, point, prelude::*, px, rgb, size, App, Application, ClickEvent, Context, FontWeight,
     ObjectFit, Render, RenderImage, TitlebarOptions, Window, WindowBounds, WindowOptions,
 };
 use image::{Frame, ImageBuffer, Rgba};
@@ -70,6 +70,8 @@ struct AppState {
     player: Option<Player>,
     image: Option<Arc<RenderImage>>,
     previous: Option<Arc<RenderImage>>,
+    playback: PlaybackState,
+    muted: bool,
     view: View,
 }
 
@@ -137,6 +139,11 @@ impl AppState {
             player: None,
             image: None,
             previous: None,
+            playback: PlaybackState {
+                volume: 1.0,
+                ..Default::default()
+            },
+            muted: false,
             view: View::Browse,
         }
     }
@@ -199,6 +206,12 @@ impl AppState {
             return updated;
         };
 
+        let playback = player.state();
+        if playback != self.playback {
+            self.playback = playback;
+            updated = true;
+        }
+
         while let Some(frame) = player.try_frame() {
             let Some(buffer) =
                 ImageBuffer::<Rgba<u8>, _>::from_raw(frame.width, frame.height, frame.data)
@@ -236,7 +249,10 @@ impl Render for RootView {
         let state = self.state.read(cx);
         let content = match (self.role, state.view) {
             (Role::Mini, _) => mini_view(&state, self.state.clone()),
-            (Role::Expanded, View::Player) => player_view(&state, self.state.clone()),
+            (Role::Expanded, View::Player) => {
+                let width = f32::from(_window.bounds().size.width);
+                player_view(&state, self.state.clone(), width)
+            }
             (Role::Expanded, View::Browse) => browse_view(&state, self.state.clone()),
         };
 
@@ -427,7 +443,11 @@ fn browse_view(state: &AppState, entity: gpui::Entity<AppState>) -> gpui::AnyEle
         .into_any_element()
 }
 
-fn player_view(state: &AppState, entity: gpui::Entity<AppState>) -> gpui::AnyElement {
+fn player_view(
+    state: &AppState,
+    entity: gpui::Entity<AppState>,
+    window_width: f32,
+) -> gpui::AnyElement {
     let title = state
         .current
         .as_ref()
@@ -511,6 +531,7 @@ fn player_view(state: &AppState, entity: gpui::Entity<AppState>) -> gpui::AnyEle
                 })),
         )
         .child(video_area(state, false))
+        .child(control_bar(state, entity.clone(), window_width))
         .child(
             div()
                 .flex()
@@ -583,6 +604,112 @@ fn mini_view(state: &AppState, entity: gpui::Entity<AppState>) -> gpui::AnyEleme
             window.remove_window();
         })
         .into_any_element()
+}
+
+fn control_bar(
+    state: &AppState,
+    entity: gpui::Entity<AppState>,
+    window_width: f32,
+) -> gpui::AnyElement {
+    let paused = state.playback.paused;
+    let label = if paused { "播放" } else { "暂停" };
+    let position = fmt_time(state.playback.position);
+    let duration = fmt_time(state.playback.duration);
+    let ratio = if state.playback.duration > 0.0 {
+        (state.playback.position / state.playback.duration).clamp(0.0, 1.0) as f32
+    } else {
+        0.0
+    };
+    let track = (window_width - 24.0).max(1.0);
+    let muted = state.muted;
+
+    let toggle_entity = entity.clone();
+    let seek_entity = entity.clone();
+    let mute_entity = entity.clone();
+
+    div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .px_3()
+        .py_2()
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(action(label, move |_, cx| {
+                    toggle_entity.update(cx, |state, cx| {
+                        if let Some(player) = &state.player {
+                            player.set_paused(!state.playback.paused);
+                        }
+                        cx.notify();
+                    });
+                }))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(MUTED))
+                        .child(format!("{position} / {duration}")),
+                )
+                .child(div().flex_1())
+                .child(action(if muted { "取消静音" } else { "静音" }, move |_, cx| {
+                    mute_entity.update(cx, |state, cx| {
+                        state.muted = !state.muted;
+                        let volume = if state.muted { 0.0 } else { 1.0 };
+                        if let Some(player) = &state.player {
+                            player.set_volume(volume);
+                        }
+                        cx.notify();
+                    });
+                })),
+        )
+        .child(
+            div()
+                .id("seek")
+                .w_full()
+                .h(px(14.0))
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .child(
+                    div()
+                        .w_full()
+                        .h(px(4.0))
+                        .rounded_full()
+                        .bg(rgb(BORDER))
+                        .child(
+                            div()
+                                .w(px(track * ratio))
+                                .h(px(4.0))
+                                .rounded_full()
+                                .bg(rgb(ACCENT)),
+                        ),
+                )
+                .on_click(move |event, window, cx| {
+                    if let ClickEvent::Mouse(mouse) = event {
+                        let width = f32::from(window.bounds().size.width);
+                        let track = (width - 24.0).max(1.0);
+                        let x = f32::from(mouse.down.position.x) - 12.0;
+                        let ratio = (x / track).clamp(0.0, 1.0);
+                        seek_entity.update(cx, |state, cx| {
+                            let duration = state.playback.duration;
+                            if duration > 0.0 {
+                                if let Some(player) = &state.player {
+                                    player.seek(ratio as f64 * duration);
+                                }
+                            }
+                            cx.notify();
+                        });
+                    }
+                }),
+        )
+        .into_any_element()
+}
+
+fn fmt_time(seconds: f64) -> String {
+    let total = seconds.max(0.0) as i64;
+    format!("{}:{:02}", total / 60, total % 60)
 }
 
 fn video_area(state: &AppState, full: bool) -> gpui::AnyElement {

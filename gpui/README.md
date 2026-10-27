@@ -15,7 +15,7 @@ clicking the mini window opens the expanded player; `小窗` goes back.
 - expanded player: video, title, up/views, `返回` to the feed, `小窗` back to mini
 - frames are shared by both windows through one `RenderImage`
 
-Not there yet: seek/pause/volume controls, danmaku, comments, search, login
+Not there yet: drag-to-seek, volume slider, danmaku, comments, search, login
 UI, always-on-top. The player video area is a fixed 236px box.
 
 ## How it works

@@ -6,11 +6,11 @@
 //! mpv/zimg build, so the GL path is the only workable one.
 
 use libmpv_sys as mpv;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
-use std::sync::Arc;
+use std::sync::mpsc::{sync_channel, Receiver, Sender, SyncSender};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -131,6 +131,20 @@ const GL_FRAMEBUFFER_COMPLETE: u32 = 0x8CD5;
 
 // ---- mpv ------------------------------------------------------------------
 
+#[derive(Clone, Copy, Default, PartialEq)]
+pub struct PlaybackState {
+    pub position: f64,
+    pub duration: f64,
+    pub paused: bool,
+    pub volume: f64,
+}
+
+pub enum Command {
+    SetPaused(bool),
+    Seek(f64),
+    SetVolume(f64),
+}
+
 #[derive(Clone)]
 pub struct VideoFrame {
     pub width: u32,
@@ -141,6 +155,8 @@ pub struct VideoFrame {
 
 pub struct Player {
     frames: Receiver<VideoFrame>,
+    commands: Sender<Command>,
+    state: Arc<Mutex<PlaybackState>>,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -148,15 +164,33 @@ pub struct Player {
 impl Player {
     pub fn open(target: &str, audio: Option<&str>, width: u32, height: u32) -> Self {
         let (tx, rx) = sync_channel(2);
+        let (command_tx, command_rx) = std::sync::mpsc::channel();
+        let state = Arc::new(Mutex::new(PlaybackState {
+            volume: 1.0,
+            ..Default::default()
+        }));
+        let state_for_thread = Arc::clone(&state);
         let stop = Arc::new(AtomicBool::new(false));
         let stop_flag = Arc::clone(&stop);
         let target = target.to_string();
         let audio = audio.map(|url| url.to_string());
 
-        let thread =
-            std::thread::spawn(move || run(&target, audio.as_deref(), width, height, tx, stop_flag));
+        let thread = std::thread::spawn(move || {
+            run(
+                &target,
+                audio.as_deref(),
+                width,
+                height,
+                tx,
+                stop_flag,
+                command_rx,
+                state_for_thread,
+            )
+        });
         Self {
             frames: rx,
+            commands: command_tx,
+            state,
             stop,
             thread: Some(thread),
         }
@@ -164,6 +198,22 @@ impl Player {
 
     pub fn try_frame(&self) -> Option<VideoFrame> {
         self.frames.try_recv().ok()
+    }
+
+    pub fn state(&self) -> PlaybackState {
+        *self.state.lock().expect("media: state lock poisoned")
+    }
+
+    pub fn set_paused(&self, paused: bool) {
+        let _ = self.commands.send(Command::SetPaused(paused));
+    }
+
+    pub fn seek(&self, seconds: f64) {
+        let _ = self.commands.send(Command::Seek(seconds));
+    }
+
+    pub fn set_volume(&self, volume: f64) {
+        let _ = self.commands.send(Command::SetVolume(volume));
     }
 }
 
@@ -285,6 +335,8 @@ fn run(
     height: u32,
     tx: SyncSender<VideoFrame>,
     stop: Arc<AtomicBool>,
+    command_rx: Receiver<Command>,
+    state: Arc<Mutex<PlaybackState>>,
 ) {
     unsafe {
         let Some(egl) = Egl::new() else {
@@ -340,6 +392,16 @@ fn run(
             return;
         }
 
+        for (name, format) in [
+            ("time-pos", mpv::mpv_format_MPV_FORMAT_DOUBLE),
+            ("duration", mpv::mpv_format_MPV_FORMAT_DOUBLE),
+            ("pause", mpv::mpv_format_MPV_FORMAT_FLAG),
+            ("volume", mpv::mpv_format_MPV_FORMAT_DOUBLE),
+        ] {
+            let name = CString::new(name).unwrap();
+            mpv::mpv_observe_property(handle, 0, name.as_ptr(), format);
+        }
+
         let gl_init = mpv::mpv_opengl_init_params {
             get_proc_address: Some(gl_proc),
             get_proc_address_ctx: std::ptr::null_mut(),
@@ -389,6 +451,36 @@ fn run(
         };
 
         while !stop.load(Ordering::Relaxed) {
+            while let Ok(command) = command_rx.try_recv() {
+                match command {
+                    Command::SetPaused(paused) => {
+                        let name = CString::new("pause").unwrap();
+                        let value = CString::new(if paused { "yes" } else { "no" }).unwrap();
+                        mpv::mpv_set_property_string(handle, name.as_ptr(), value.as_ptr());
+                    }
+                    Command::Seek(seconds) => {
+                        let name = CString::new("time-pos").unwrap();
+                        let mut value = seconds.max(0.0);
+                        mpv::mpv_set_property(
+                            handle,
+                            name.as_ptr(),
+                            mpv::mpv_format_MPV_FORMAT_DOUBLE,
+                            &mut value as *mut f64 as *mut c_void,
+                        );
+                    }
+                    Command::SetVolume(volume) => {
+                        let name = CString::new("volume").unwrap();
+                        let mut value = (volume.clamp(0.0, 1.0)) * 100.0;
+                        mpv::mpv_set_property(
+                            handle,
+                            name.as_ptr(),
+                            mpv::mpv_format_MPV_FORMAT_DOUBLE,
+                            &mut value as *mut f64 as *mut c_void,
+                        );
+                    }
+                }
+            }
+
             loop {
                 let event = mpv::mpv_wait_event(handle, 0.0);
                 if event.is_null() {
@@ -396,6 +488,26 @@ fn run(
                 }
                 if (*event).event_id == mpv::mpv_event_id_MPV_EVENT_NONE {
                     break;
+                }
+                if (*event).event_id == mpv::mpv_event_id_MPV_EVENT_PROPERTY_CHANGE {
+                    let property = (*event).data as *mut mpv::mpv_event_property;
+                    if !property.is_null() && !(*property).name.is_null() && !(*property).data.is_null()
+                    {
+                        let name = CStr::from_ptr((*property).name).to_string_lossy();
+                        let data = (*property).data;
+                        let format = (*property).format;
+                        let mut guard = state.lock().expect("media: state lock poisoned");
+                        if format == mpv::mpv_format_MPV_FORMAT_DOUBLE {
+                            match &*name {
+                                "time-pos" => guard.position = *(data as *const f64),
+                                "duration" => guard.duration = *(data as *const f64),
+                                "volume" => guard.volume = *(data as *const f64) / 100.0,
+                                _ => {}
+                            }
+                        } else if format == mpv::mpv_format_MPV_FORMAT_FLAG && &*name == "pause" {
+                            guard.paused = *(data as *const c_int) != 0;
+                        }
+                    }
                 }
                 if (*event).event_id == mpv::mpv_event_id_MPV_EVENT_FILE_LOADED {
                     if let Some(url) = pending_audio.take() {
