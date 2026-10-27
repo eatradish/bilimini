@@ -7,15 +7,16 @@ clicking the mini window opens the expanded player; `小窗` goes back.
 
 ## What works
 
-- feed list from the real homepage recommendations (`bilimini-bili`)
+- feed cards with real covers (fetched + decoded in the background), title,
+  up/views; header with tabs and login pill (visual only for now)
 - click a row → resolve cid + qn=80 DASH urls → play → swap to the mini window
-- mini window (380×214) at the bottom-right of the primary display; click it to
-  open the expanded player
+- mini window (380×214) at the bottom-right of the primary display, with a
+  title bar + 展开 hint; click it to open the expanded player
 - expanded player: video, title, up/views, `返回` to the feed, `小窗` back to mini
 - frames are shared by both windows through one `RenderImage`
 
-Not there yet: seek/pause controls, danmaku, comments, search, login UI,
-always-on-top. The player video area is a fixed 236px box for now.
+Not there yet: seek/pause/volume controls, danmaku, comments, search, login
+UI, always-on-top. The player video area is a fixed 236px box.
 
 ## How it works
 

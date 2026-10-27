@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 gpui = "0.2"
-image = { version = "0.25", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 bilimini-bili = { path = "../bili" }
 bilimini-media = { path = "../media" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
