@@ -146,7 +146,9 @@ int main(int argc, char *argv[])
     // Single instance: a second launch raises the existing window instead of
     // spawning another player.
     if (!screenshot) {
-        const QString key = QStringLiteral("bili-mini-instance");
+        // Tests can run alongside a user instance by overriding the socket key.
+        const QString key = qEnvironmentVariable("BILIMINI_INSTANCE",
+                                                 QStringLiteral("bili-mini-instance"));
         QLocalSocket probe;
         probe.connectToServer(key);
         if (probe.waitForConnected(200)) {

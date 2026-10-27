@@ -10,6 +10,42 @@ Item {
 
     readonly property int gripSize: 18
 
+    // Controls fade out while playing and come back on mouse activity.
+    property bool controlsVisible: true
+    property bool controlsHovered: false
+    readonly property bool controlsAutoHide: hasItem && host && host.playing
+
+    function pokeControls() {
+        root.controlsVisible = true;
+        if (root.controlsAutoHide)
+            hideTimer.restart();
+        else
+            hideTimer.stop();
+    }
+
+    Timer {
+        id: hideTimer
+        interval: 2400
+        repeat: false
+        onTriggered: {
+            if (root.controlsHovered) {
+                hideTimer.restart();
+                return;
+            }
+            if (root.controlsAutoHide)
+                root.controlsVisible = false;
+        }
+    }
+
+    Connections {
+        target: root.host
+        function onPlayingChanged() { root.pokeControls(); }
+    }
+
+    // The mini view is usually created while playback already runs, so seed the
+    // timer from onCompleted / autoHide changes instead of playingChanged.
+    onControlsAutoHideChanged: pokeControls()
+
     function cornerAt(x, y) {
         const left = x <= gripSize;
         const right = x >= width - gripSize;
@@ -47,7 +83,10 @@ Item {
             root.host.setVideoRect(0, 0, width, height);
     }
 
-    Component.onCompleted: reportVideoRect()
+    Component.onCompleted: {
+        reportVideoRect();
+        pokeControls();
+    }
     onWidthChanged: reportVideoRect()
     onHeightChanged: reportVideoRect()
 
@@ -131,7 +170,10 @@ Item {
                 root.host.beginResize(root.signX(corner), root.signY(corner));
         }
 
+        onEntered: root.pokeControls()
+
         onPositionChanged: function (mouse) {
+            root.pokeControls();
             if (!pressed || corner !== 0)
                 return;
             if (!moving && (Math.abs(mouse.x - pressPoint.x) + Math.abs(mouse.y - pressPoint.y) > 6)) {
@@ -236,6 +278,7 @@ Item {
     }
 
     Rectangle {
+        id: miniGradient
         anchors {
             left: parent.left
             right: parent.right
@@ -243,9 +286,22 @@ Item {
         }
         height: 92
         radius: Theme.radius
+        opacity: root.controlsVisible ? 1 : 0
+        visible: opacity > 0
+        enabled: root.controlsVisible
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+
         gradient: Gradient {
             GradientStop { position: 0.0; color: "#00000000" }
             GradientStop { position: 1.0; color: "#D9000000" }
+        }
+
+        HoverHandler {
+            onHoveredChanged: {
+                root.controlsHovered = hovered;
+                if (hovered)
+                    root.pokeControls();
+            }
         }
     }
 
@@ -259,6 +315,10 @@ Item {
             bottomMargin: 22
         }
         spacing: 4
+        opacity: root.controlsVisible ? 1 : 0
+        visible: opacity > 0
+        enabled: root.controlsVisible
+        Behavior on opacity { NumberAnimation { duration: 150 } }
 
         IconButton {
             icon: root.host && root.host.playing ? "icons/pause.svg" : "icons/play.svg"
@@ -329,6 +389,10 @@ Item {
             bottomMargin: 6
         }
         height: 12
+        opacity: root.controlsVisible ? 1 : 0
+        visible: opacity > 0
+        enabled: root.controlsVisible
+        Behavior on opacity { NumberAnimation { duration: 150 } }
 
         Rectangle {
             id: miniTrack

@@ -131,22 +131,25 @@ Item {
             }
         }
 
-        // Drag handle: wordmark area only, so the resize corners stay free.
+        // Drag handle: the title area between the wordmark and the buttons.
+        // startSystemMove() has to be called while the press is being handled,
+        // not after a drag threshold, otherwise the compositor ignores it.
         Item {
             anchors {
                 left: parent.left
                 leftMargin: 34
+                right: parent.right
+                rightMargin: 130
                 top: parent.top
                 bottom: parent.bottom
             }
-            width: 120
 
-            DragHandler {
-                target: null
-                onActiveChanged: {
-                    if (!active || root.host.resizing)
-                        return;
-                    AppCore.startSystemMove(root.host);
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.OpenHandCursor
+                onPressed: {
+                    if (root.host && !root.host.resizing)
+                        AppCore.startSystemMove(root.host);
                 }
             }
         }
