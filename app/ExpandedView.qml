@@ -192,6 +192,22 @@ Item {
             }
 
             Item { Layout.fillWidth: true }
+
+            Text {
+                text: root.host && root.host.feedLoading ? "刷新中…" : "刷新"
+                color: root.host && root.host.feedLoading ? Theme.textFaint : Theme.accent
+                font.pixelSize: 11
+                visible: root.host && root.host.tab === "recommend"
+                         && root.host.view === "browse"
+
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                TapHandler {
+                    onTapped: {
+                        if (root.host && !root.host.feedLoading)
+                            root.host.loadFeed();
+                    }
+                }
+            }
         }
     }
 
