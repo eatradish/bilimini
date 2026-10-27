@@ -1,0 +1,9 @@
+[package]
+name = "bilimini-gpui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gpui = "0.2"
+image = { version = "0.25", default-features = false }
+bilimini-media = { path = "../media" }

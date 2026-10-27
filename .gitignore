@@ -3,3 +3,4 @@
 *.log
 *.user
 .vscode/
+gpui/target/

@@ -21,18 +21,21 @@ crates/
 
 去掉 sidecar、axum、HTTP 和 token：数据层直接在同一个进程里调用。
 
-### 视频渲染
+### 视频渲染（已按 M0 验证）
 
-GPUI 没有暴露「外部 GL 纹理」给普通视图，最直接的路径是让 mpv 走 **software render API**：
+GPUI 没有暴露「外部 GL 纹理」给普通视图，但 **software render API 在这套
+mpv 0.41 + zimg 上会崩**（纯 C 最小程序也崩在 `mpv_render_context_render` 里），
+所以走 **OpenGL 渲染 API + 离屏 EGL/FBO + 回读**：
 
-1. `mpv_render_context_create(MPV_RENDER_API_TYPE_SW)`
-2. 每帧 `mpv_render_context_render` 到一块 BGRA 缓冲（`SW_SIZE` / `SW_STRIDE` / `SW_FORMAT`）
-3. 用 `RenderImage`（GPUI 的 BGRA 图像资源）上传，画在视频区域
+1. 工作线程建 EGL（pbuffer）上下文和 FBO
+2. `mpv_render_context_create(MPV_RENDER_API_TYPE_OPENGL)`，每帧渲染进 FBO
+3. `glReadPixels(GL_BGRA)` 读回 BGRA，通过有界 channel 给 UI 线程
+4. UI 线程包成 `RenderImage` 用 `img()` 画，延迟两帧 `drop_image` 防止 atlas 涨
 
-代价是每帧一次 CPU 拷贝 + 上传。对 400×225 的小窗没问题；全屏 1080p 时按窗口尺寸
-请求更低清晰度（qn），避免无谓的 1080p → 400px 缩放。
+踩到的坑：`FLIP_Y` 要用 0（配合自下而上的 readPixels）；渲染完要重新绑定自己的
+FBO（mpv 可能留下它自己的 FBO）；640×360 在 llvmpipe 下测到约 29fps。
 
-备选（暂不做）：mpv 独立子窗口、GL 纹理互操作、把视频交给合成器。
+备选（暂不做）：mpv 独立子窗口、直接拿 GL 纹理（GPUI 不暴露）、GStreamer。
 
 ### 弹幕
 
