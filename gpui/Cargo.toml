@@ -1,0 +1,15 @@
+[workspace]
+members = ["app", "bili", "media"]
+resolver = "2"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# xattr 0.2.3 (pulled by zed-async-tar via gpui_http_client) refers to
+# libc::ENOATTR, which modern libc no longer exposes on Linux. Patch it to
+# ENODATA locally; see vendor/xattr/src/sys/mod.rs.
+[patch.crates-io]
+xattr = { path = "vendor/xattr" }
