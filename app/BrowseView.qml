@@ -6,6 +6,7 @@ Item {
 
     property var host: null
     property var filtered: []
+    property int oldFirstCount: 0
 
     readonly property bool loading: host !== null && (host.feedLoading || host.searchLoading)
     readonly property string errorText: host === null ? ""
@@ -15,6 +16,7 @@ Item {
     function refilter() {
         if (!host)
             return;
+        oldFirstCount = filtered.length;
         if (host.tab === "search") {
             filtered = host.searchResults || [];
         } else if (host.tab === "history") {
@@ -28,7 +30,20 @@ Item {
         target: root.host
         function onTabChanged() { root.refilter() }
         function onQueryChanged() { root.refilter() }
-        function onFeedItemsChanged() { root.refilter() }
+        function onFeedItemsChanged() {
+            // Appending a batch replaces the JS array, which makes ListView
+            // reset contentY to 0. Keep the reader's position when the list
+            // only grew at the tail (the first item is unchanged).
+            const oldY = list.contentY;
+            const oldFirst = root.filtered.length > 0 ? root.filtered[0].bvid : "";
+            root.refilter();
+            const newList = root.filtered;
+            const appended = newList.length > 0 && oldFirst !== ""
+                             && newList[0].bvid === oldFirst
+                             && newList.length > oldFirstCount;
+            if (appended)
+                list.contentY = oldY;
+        }
         function onSearchResultsChanged() { root.refilter() }
     }
 
