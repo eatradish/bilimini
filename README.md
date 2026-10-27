@@ -1,6 +1,6 @@
 # bilimini
 
-主要用途：**在屏幕右下角的小窗里看 B 站**，不挡其他窗口。Qt 6 / QML + Rust + libmpv。
+主要用途：**在屏幕右下角的小窗里看 B 站**。Qt 6 / QML + Rust + libmpv。
 
 ![小窗](docs/screenshots/mini.png)
 
