@@ -4,10 +4,6 @@
 
 ![小窗](docs/screenshots/mini.png)
 
-| 展开播放页 | 推荐列表 | 搜索 UP 主 | 评论 |
-| --- | --- | --- | --- |
-| ![player](docs/screenshots/player.png) | ![browse](docs/screenshots/browse.png) | ![search](docs/screenshots/search-user.png) | ![comments](docs/screenshots/comments.png) |
-
 ## 功能
 
 - **小窗**：无边框，贴右下角，始终置顶
