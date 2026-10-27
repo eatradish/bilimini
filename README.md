@@ -45,7 +45,9 @@ core/                Rust sidecar
 
 ## 构建
 
-需要 Qt 6.5+、CMake ≥ 3.21、Ninja、Rust 和 libmpv（0.40+，含 `client.h`、`render_gl.h`）。
+依赖：Qt 6.5+、CMake ≥ 3.21、Ninja、Rust、libmpv（0.40+，含 `client.h`、`render_gl.h`）。
+
+安装依赖：
 
 Arch：
 
@@ -58,6 +60,8 @@ AOSC OS：
 ```bash
 sudo oma install qt-6 mpv rustc cargo cmake ninja pkgconf
 ```
+
+然后编译并运行：
 
 ```bash
 ./build.sh   # 编译 core 和 app，产物在 build/
