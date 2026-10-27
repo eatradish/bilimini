@@ -18,8 +18,8 @@ struct VideoView {
 }
 
 impl VideoView {
-    fn new(target: String, cx: &mut Context<Self>) -> Self {
-        let player = Player::open(&target, VIDEO_WIDTH, VIDEO_HEIGHT);
+    fn new(target: String, audio: Option<String>, cx: &mut Context<Self>) -> Self {
+        let player = Player::open(&target, audio.as_deref(), VIDEO_WIDTH, VIDEO_HEIGHT);
 
         cx.spawn(async move |this, cx: &mut AsyncApp| {
             loop {
@@ -100,9 +100,11 @@ impl Render for VideoView {
 }
 
 fn main() {
-    let target = std::env::args()
-        .nth(1)
-        .expect("usage: bilimini-gpui <video-url-or-path>");
+    let mut args = std::env::args().skip(1);
+    let target = args
+        .next()
+        .expect("usage: bilimini-gpui <video-url-or-path> [audio-url]");
+    let audio = args.next();
 
     Application::new().run(move |cx: &mut App| {
         let options = WindowOptions {
@@ -118,8 +120,9 @@ fn main() {
         };
 
         let target = target.clone();
+        let audio = audio.clone();
         cx.open_window(options, move |_window, cx| {
-            cx.new(|cx| VideoView::new(target.clone(), cx))
+            cx.new(|cx| VideoView::new(target.clone(), audio.clone(), cx))
         })
         .expect("failed to open window");
 

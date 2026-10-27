@@ -1,6 +1,7 @@
 fn main() {
     let target = std::env::args().nth(1).expect("usage: probe <video>");
-    let player = bilimini_media::Player::open(&target, 640, 360);
+    let audio = std::env::args().nth(2);
+    let player = bilimini_media::Player::open(&target, audio.as_deref(), 640, 360);
     let start = std::time::Instant::now();
     let mut count = 0;
     while start.elapsed().as_secs() < 5 {

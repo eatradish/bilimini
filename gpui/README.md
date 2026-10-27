@@ -28,8 +28,12 @@ Notes:
 
 ```bash
 cargo build
-./target/debug/bilimini-gpui /path/to/video.mp4
+./target/debug/bilimini-gpui /path/to/video.mp4            # local file
+./target/debug/bilimini-gpui "<video-url>" "<audio-url>"   # bilibili DASH pair
 ```
+
+Bilibili DASH audio is a separate URL; it is added with `audio-add ... select`
+once the video reports `FILE_LOADED`. Both requests carry Referer/User-Agent.
 
 System deps beyond the usual Qt/Rust toolchain: EGL (`libegl`) and a working
 OpenGL/EGL driver (Mesa). No GStreamer needed.

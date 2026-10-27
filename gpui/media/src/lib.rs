@@ -146,13 +146,15 @@ pub struct Player {
 }
 
 impl Player {
-    pub fn open(target: &str, width: u32, height: u32) -> Self {
+    pub fn open(target: &str, audio: Option<&str>, width: u32, height: u32) -> Self {
         let (tx, rx) = sync_channel(2);
         let stop = Arc::new(AtomicBool::new(false));
         let stop_flag = Arc::clone(&stop);
         let target = target.to_string();
+        let audio = audio.map(|url| url.to_string());
 
-        let thread = std::thread::spawn(move || run(&target, width, height, tx, stop_flag));
+        let thread =
+            std::thread::spawn(move || run(&target, audio.as_deref(), width, height, tx, stop_flag));
         Self {
             frames: rx,
             stop,
@@ -276,7 +278,14 @@ impl Drop for Egl {
     }
 }
 
-fn run(target: &str, width: u32, height: u32, tx: SyncSender<VideoFrame>, stop: Arc<AtomicBool>) {
+fn run(
+    target: &str,
+    audio: Option<&str>,
+    width: u32,
+    height: u32,
+    tx: SyncSender<VideoFrame>,
+    stop: Arc<AtomicBool>,
+) {
     unsafe {
         let Some(egl) = Egl::new() else {
             eprintln!("[media] EGL init failed");
@@ -367,6 +376,9 @@ fn run(target: &str, width: u32, height: u32, tx: SyncSender<VideoFrame>, stop: 
         ];
         mpv::mpv_command(handle, args.as_mut_ptr());
 
+        // DASH audio is a separate URL; add it once the video file is loaded.
+        let mut pending_audio = audio.map(|url| url.to_string());
+
         let mut buffer = vec![0u8; (width as usize) * (height as usize) * 4];
         let mut seq = 0u64;
         let mut gl_fbo = mpv::mpv_opengl_fbo {
@@ -384,6 +396,21 @@ fn run(target: &str, width: u32, height: u32, tx: SyncSender<VideoFrame>, stop: 
                 }
                 if (*event).event_id == mpv::mpv_event_id_MPV_EVENT_NONE {
                     break;
+                }
+                if (*event).event_id == mpv::mpv_event_id_MPV_EVENT_FILE_LOADED {
+                    if let Some(url) = pending_audio.take() {
+                        let command = CString::new("audio-add").unwrap();
+                        let url = CString::new(url).unwrap();
+                        let select = CString::new("select").unwrap();
+                        let mut args = [
+                            command.as_ptr(),
+                            url.as_ptr(),
+                            select.as_ptr(),
+                            std::ptr::null(),
+                        ];
+                        let rc = mpv::mpv_command(handle, args.as_mut_ptr());
+                        eprintln!("[media] audio-add rc={rc}");
+                    }
                 }
             }
 
